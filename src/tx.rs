@@ -71,11 +71,7 @@ impl<D: Device> TxMode<D> {
 
             // TX won't continue while MAX_RT is set
             if status.max_rt() {
-                let mut clear = Status(0);
-                // Clear TX interrupts
-                clear.set_tx_ds(true);
-                clear.set_max_rt(true);
-                self.device.write_register(clear)?;
+                self.flush_tx()?;
             }
         }
         // Can save power now

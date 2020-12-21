@@ -1,6 +1,6 @@
 [package]
 name = "embedded-nrf24l01"
-version = "0.2.0"
+version = "0.2.0-davidji.1"
 authors = ["Astro <astro@spaceboyz.net>"]
 description = "A driver for NRF24L01(+) transceivers on embedded-hal platforms."
 license = "Apache-2.0"
