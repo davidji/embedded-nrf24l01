@@ -1,6 +1,6 @@
 use crate::command::WriteTxPayload;
 use crate::config::Configuration;
-use crate::device::Device;
+use crate::device::{ Device, UsingDevice };
 use crate::registers::{FifoStatus, ObserveTx, Status};
 use crate::standby::StandbyMode;
 use core::fmt;
@@ -18,6 +18,16 @@ impl<D: Device> fmt::Debug for TxMode<D> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "TxMode")
     }
+}
+
+impl<D: Device> UsingDevice<D> for TxMode<D> {
+    fn device(&mut self) -> &mut D {
+        &mut self.device
+    }
+}
+
+impl<D: Device> Configuration<D> for TxMode<D> {
+
 }
 
 impl<D: Device> TxMode<D> {
@@ -86,9 +96,3 @@ impl<D: Device> TxMode<D> {
     }
 }
 
-impl<D: Device> Configuration for TxMode<D> {
-    type Inner = D;
-    fn device(&mut self) -> &mut Self::Inner {
-        &mut self.device
-    }
-}

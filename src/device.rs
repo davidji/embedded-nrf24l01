@@ -49,3 +49,7 @@ pub trait Device {
     where
         F: FnOnce(&mut Config) -> R;
 }
+
+pub trait UsingDevice<D: Device> {
+    fn device(&mut self) -> &mut D;
+}

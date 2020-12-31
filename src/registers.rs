@@ -304,8 +304,7 @@ def_rx_pw!(RxPwP4, 0x15);
 def_rx_pw!(RxPwP5, 0x16);
 
 bitfield! {
-    /// Status register, always received on MISO while command is sent
-    /// on MOSI.
+    /// Fifo status register
     pub struct FifoStatus(u8);
     impl Debug;
 
@@ -339,3 +338,4 @@ bitfield! {
     pub en_dyn_ack, set_en_dyn_ack: 0;
 }
 impl_register!(Feature, 0x1D);
+

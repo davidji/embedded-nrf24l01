@@ -1,6 +1,6 @@
 use crate::command::{ReadRxPayload, ReadRxPayloadWidth};
 use crate::config::Configuration;
-use crate::device::Device;
+use crate::device::{ Device, UsingDevice };
 use crate::payload::Payload;
 use crate::registers::{FifoStatus, CD};
 use crate::standby::StandbyMode;
@@ -14,6 +14,16 @@ impl<D: Device> fmt::Debug for RxMode<D> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "RxMode")
     }
+}
+
+impl<D: Device> UsingDevice<D> for RxMode<D> {
+    fn device(&mut self) -> &mut D {
+        &mut self.device
+    }
+}
+
+impl<D: Device> Configuration<D> for RxMode<D> {
+
 }
 
 impl<D: Device> RxMode<D> {
@@ -73,12 +83,5 @@ impl<D: Device> RxMode<D> {
             .device
             .send_command(&ReadRxPayload::new(payload_width as usize))?;
         Ok(payload)
-    }
-}
-
-impl<D: Device> Configuration for RxMode<D> {
-    type Inner = D;
-    fn device(&mut self) -> &mut Self::Inner {
-        &mut self.device
     }
 }

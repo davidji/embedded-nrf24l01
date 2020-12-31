@@ -35,6 +35,9 @@ mod rx;
 pub use crate::rx::RxMode;
 mod tx;
 pub use crate::tx::TxMode;
+mod rxtx;
+mod ptx;
+pub use crate::ptx::PtxMode;
 
 pub const PIPES_COUNT: usize = 6;
 pub const MIN_ADDR_BYTES: usize = 3;

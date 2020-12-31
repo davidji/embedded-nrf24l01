@@ -1,5 +1,5 @@
 use crate::command::{FlushRx, FlushTx, Nop};
-use crate::device::Device;
+use crate::device::{ Device, UsingDevice };
 use crate::registers::{
     Dynpd, EnAa, EnRxaddr, Feature, RfCh, RfSetup, SetupAw, SetupRetr, Status, TxAddr,
 };
@@ -25,21 +25,42 @@ pub enum CrcMode {
     TwoBytes,
 }
 
-pub trait Configuration {
-    type Inner: Device;
-    fn device(&mut self) -> &mut Self::Inner;
+pub fn auto_retransmit( delay: u8, count: u8) -> SetupRetr {
+    let mut register = SetupRetr(0);
+    register.set_ard(delay);
+    register.set_arc(count);
+    register
+}
 
-    fn flush_rx(&mut self) -> Result<(), <<Self as Configuration>::Inner as Device>::Error> {
+pub fn auto_ack(bools: &[bool; PIPES_COUNT]) -> EnAa {
+    // Convert back
+    EnAa::from_bools(bools)
+}
+
+pub struct Interrupts {
+    // Data has been received
+    pub rx_dr: bool,
+    // Data has been acknowledged, and so there's a newly free slot in the TX FIFO
+    pub tx_ds: bool,
+    // The maximum retries has been reached for the packet at the head of the TX fifo,
+    // so transimission has stopped.
+    pub max_rt: bool,
+}
+
+pub trait Configuration<D> : UsingDevice<D> 
+where D: Device {
+
+    fn flush_rx(&mut self) -> Result<(), D::Error> {
         self.device().send_command(&FlushRx)?;
         Ok(())
     }
 
-    fn flush_tx(&mut self) -> Result<(), <<Self as Configuration>::Inner as Device>::Error> {
+    fn flush_tx(&mut self) -> Result<(), D::Error> {
         self.device().send_command(&FlushTx)?;
         Ok(())
     }
 
-    fn get_frequency(&mut self) -> Result<u8, <<Self as Configuration>::Inner as Device>::Error> {
+    fn get_frequency(&mut self) -> Result<u8, D::Error> {
         let (_, register) = self.device().read_register::<RfCh>()?;
         let freq_offset = register.rf_ch();
         Ok(freq_offset)
@@ -48,7 +69,7 @@ pub trait Configuration {
     fn set_frequency(
         &mut self,
         freq_offset: u8,
-    ) -> Result<(), <<Self as Configuration>::Inner as Device>::Error> {
+    ) -> Result<(), D::Error> {
         assert!(freq_offset < 126);
 
         let mut register = RfCh(0);
@@ -63,7 +84,7 @@ pub trait Configuration {
         &mut self,
         rate: DataRate,
         power: u8,
-    ) -> Result<(), <<Self as Configuration>::Inner as Device>::Error> {
+    ) -> Result<(), D::Error> {
         assert!(power < 0b100);
         let mut register = RfSetup(0);
         register.set_rf_pwr(power);
@@ -83,7 +104,7 @@ pub trait Configuration {
     fn set_crc(
         &mut self,
         mode: Option<CrcMode>,
-    ) -> Result<(), <<Self as Configuration>::Inner as Device>::Error> {
+    ) -> Result<(), D::Error> {
         self.device().update_config(|config| match mode {
             None => config.set_en_crc(false),
             Some(mode) => match mode {
@@ -95,14 +116,14 @@ pub trait Configuration {
 
     /// Sets the interrupt mask
     /// 
-    /// When an interrupt mask is set to true, the interrupt is masked and will not fire on the IRQ pin.
-    /// When set to false, it will trigger the IRQ pin.
+    /// When an interrupt mask is set to true, the interrupt is masked and 
+    /// will not fire on the IRQ pin. When set to false, it will trigger the IRQ pin.
     fn set_interrupt_mask(
         &mut self,
         data_ready_rx: bool,
         data_sent_tx: bool,
         max_retransmits_tx: bool
-    ) -> Result<(), <<Self as Configuration>::Inner as Device>::Error> {
+    ) -> Result<(), D::Error> {
         self.device().update_config(|config| {
             config.set_mask_rx_dr(data_ready_rx);
             config.set_mask_tx_ds(data_sent_tx);
@@ -113,7 +134,7 @@ pub trait Configuration {
     fn set_pipes_rx_enable(
         &mut self,
         bools: &[bool; PIPES_COUNT],
-    ) -> Result<(), <<Self as Configuration>::Inner as Device>::Error> {
+    ) -> Result<(), D::Error> {
         self.device().write_register(EnRxaddr::from_bools(bools))?;
         Ok(())
     }
@@ -122,7 +143,7 @@ pub trait Configuration {
         &mut self,
         pipe_no: usize,
         addr: &[u8],
-    ) -> Result<(), <<Self as Configuration>::Inner as Device>::Error> {
+    ) -> Result<(), D::Error> {
         macro_rules! w {
             ( $($no: expr, $name: ident);+ ) => (
                 match pipe_no {
@@ -149,7 +170,7 @@ pub trait Configuration {
     fn set_tx_addr(
         &mut self,
         addr: &[u8],
-    ) -> Result<(), <<Self as Configuration>::Inner as Device>::Error> {
+    ) -> Result<(), D::Error> {
         let register = TxAddr::new(addr);
         self.device().write_register(register)?;
         Ok(())
@@ -159,17 +180,14 @@ pub trait Configuration {
         &mut self,
         delay: u8,
         count: u8,
-    ) -> Result<(), <<Self as Configuration>::Inner as Device>::Error> {
-        let mut register = SetupRetr(0);
-        register.set_ard(delay);
-        register.set_arc(count);
-        self.device().write_register(register)?;
+    ) -> Result<(), D::Error> {
+        self.device().write_register(auto_retransmit(delay, count))?;
         Ok(())
     }
 
     fn get_auto_ack(
         &mut self,
-    ) -> Result<[bool; PIPES_COUNT], <<Self as Configuration>::Inner as Device>::Error> {
+    ) -> Result<[bool; PIPES_COUNT], D::Error> {
         // Read
         let (_, register) = self.device().read_register::<EnAa>()?;
         Ok(register.to_bools())
@@ -178,7 +196,7 @@ pub trait Configuration {
     fn set_auto_ack(
         &mut self,
         bools: &[bool; PIPES_COUNT],
-    ) -> Result<(), <<Self as Configuration>::Inner as Device>::Error> {
+    ) -> Result<(), D::Error> {
         // Convert back
         let register = EnAa::from_bools(bools);
         // Write back
@@ -188,27 +206,36 @@ pub trait Configuration {
 
     fn get_address_width(
         &mut self,
-    ) -> Result<u8, <<Self as Configuration>::Inner as Device>::Error> {
+    ) -> Result<u8, D::Error> {
         let (_, register) = self.device().read_register::<SetupAw>()?;
         Ok(2 + register.aw())
     }
 
     fn get_interrupts(
         &mut self,
-    ) -> Result<(bool, bool, bool), <<Self as Configuration>::Inner as Device>::Error> {
+    ) -> Result<(bool, bool, bool), D::Error> {
         let (status, ()) = self.device().send_command(&Nop)?;
         Ok((status.rx_dr(), status.tx_ds(), status.max_rt()))
     }
 
+    /// Clear interrupts, and return the interrupts set before clearing
     fn clear_interrupts(
         &mut self,
-    ) -> Result<(), <<Self as Configuration>::Inner as Device>::Error> {
+    ) -> Result<Interrupts, D::Error> {
         let mut clear = Status(0);
         clear.set_rx_dr(true);
         clear.set_tx_ds(true);
         clear.set_max_rt(true);
-        self.device().write_register(clear)?;
-        Ok(())
+        // the contents of the status register is sent back to
+        // us _before_ every operation so this returns the state of interrupts
+        // before they are cleared.
+        match self.device().write_register(clear) {
+            Ok(status) => Ok(Interrupts {
+                rx_dr: status.rx_dr(), 
+                tx_ds: status.tx_ds(), 
+                max_rt: status.max_rt() }),
+            Err(e) => Err(e)
+        }
     }
 
     /// ## `bools`
@@ -217,7 +244,7 @@ pub trait Configuration {
     fn set_pipes_rx_lengths(
         &mut self,
         lengths: &[Option<u8>; PIPES_COUNT],
-    ) -> Result<(), <<Self as Configuration>::Inner as Device>::Error> {
+    ) -> Result<(), D::Error> {
         // Enable dynamic payload lengths
         let mut bools = [true; PIPES_COUNT];
         for (i, length) in lengths.iter().enumerate() {
