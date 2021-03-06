@@ -30,7 +30,10 @@ impl <D: Device> Configuration<D> for PtxMode<D> {
 impl<D: Device> PtxMode<D> {
 
     /// Send asynchronously
-    pub fn send_receive(&mut self, packet: Option<&[u8]>) -> Result<SendReceiveResult, D::Error> {
+    pub fn send_receive(
+            &mut self,
+            send: Option<&[u8]>
+        ) -> Result<SendReceiveResult, D::Error> {
         let (status, fifo_status) = self.device.read_register::<FifoStatus>()?;
         let dropped = match status.max_rt() {
             true => {
@@ -43,7 +46,7 @@ impl<D: Device> PtxMode<D> {
             false => false
         };
 
-        let sent = match (fifo_status.tx_full(), packet) {
+        let sent = match (fifo_status.tx_full(), send) {
                 (true, _) => false,
                 (false, None) => false,
                 (false, Some(payload)) => {
