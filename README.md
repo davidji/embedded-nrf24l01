@@ -11,6 +11,10 @@
 
 * Auto-ack support
 
+## Reference datasheets
+
+* [nRF24L01+](https://www.sparkfun.com/datasheets/Components/SMD/nRF24L01Pluss_Preliminary_Product_Specification_v1_0.pdf)
+
 ## Usage
 
 ### Parameters
@@ -39,6 +43,21 @@ This will provide an instance of `Standby`. You can use `.rx()` or
 `.tx()` to transfer into a `RXMode` and `TXMode` instances. They
 implement `.standby()` methods to get back to `Standby` and then
 switch to the other mode.
+
+
+### Configuration
+
+Before you start transmission, the device must be configured. Example:
+
+```rust
+nrf24.set_channel(8)?;
+nrf24.set_auto_retransmit(0, 0)?;
+nrf24.set_rf(&nrf24::DataRate::R2Mbps, 3)?;
+nrf24.set_pipes_rx_enable(&[true, false, false, false, false, false])?;
+nrf24.set_auto_ack(&[false; 6])?;
+nrf24.set_crc(&nrf24::CrcMode::Disabled)?;
+nrf24.set_tx_addr(&b"fnord"[..])?;
+```
 
 ### `RXMode`
 

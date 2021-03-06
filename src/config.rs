@@ -1,15 +1,18 @@
 use crate::command::{FlushRx, FlushTx, Nop};
 use crate::device::{ Device, UsingDevice };
 use crate::registers::{
-    Dynpd, EnAa, EnRxaddr, Feature, RfCh, RfSetup, SetupAw, SetupRetr, Status, TxAddr,
+    Config, Dynpd, EnAa, EnRxaddr, Feature, RfCh, RfSetup, SetupAw, SetupRetr, Status, TxAddr,
 };
 use crate::PIPES_COUNT;
 
 /// Supported air data rates.
 #[derive(Debug, PartialEq, Copy, Clone)]
 pub enum DataRate {
+    /// 250 Kbps
     R250Kbps,
+    /// 1 Mbps
     R1Mbps,
+    /// 2 Mbps
     R2Mbps,
 }
 
@@ -19,10 +22,27 @@ impl Default for DataRate {
     }
 }
 
+/// Supported CRC modes
 #[derive(Debug, PartialEq, Copy, Clone)]
 pub enum CrcMode {
+    /// Disable all CRC generation/checking
+    Disabled,
+    /// One byte checksum
     OneByte,
+    /// Two bytes checksum
     TwoBytes,
+}
+
+impl CrcMode {
+    fn set_config(&self, config: &mut Config) {
+        let (en_crc, crco) = match *self {
+            CrcMode::Disabled => (false, false),
+            CrcMode::OneByte => (true, false),
+            CrcMode::TwoBytes => (true, true),
+        };
+        config.set_en_crc(en_crc);
+        config.set_crco(crco);
+    }
 }
 
 pub fn auto_retransmit( delay: u8, count: u8) -> SetupRetr {
@@ -47,6 +67,9 @@ pub struct Interrupts {
     pub max_rt: bool,
 }
 
+/// Configuration methods
+///
+/// These seem to work in all modes
 pub trait Configuration<D> : UsingDevice<D> 
 where D: Device {
 
@@ -55,17 +78,20 @@ where D: Device {
         Ok(())
     }
 
+    /// Flush TX queue, discarding any unsent packets
     fn flush_tx(&mut self) -> Result<(), D::Error> {
         self.device().send_command(&FlushTx)?;
         Ok(())
     }
 
+    /// Get frequency offset (channel)
     fn get_frequency(&mut self) -> Result<u8, D::Error> {
         let (_, register) = self.device().read_register::<RfCh>()?;
         let freq_offset = register.rf_ch();
         Ok(freq_offset)
     }
 
+    /// Set frequency offset (channel)
     fn set_frequency(
         &mut self,
         freq_offset: u8,
@@ -82,14 +108,14 @@ where D: Device {
     /// power: `0`: -18 dBm, `3`: 0 dBm
     fn set_rf(
         &mut self,
-        rate: DataRate,
+        rate: &DataRate,
         power: u8,
     ) -> Result<(), D::Error> {
         assert!(power < 0b100);
         let mut register = RfSetup(0);
         register.set_rf_pwr(power);
 
-        let (dr_low, dr_high) = match rate {
+        let (dr_low, dr_high) = match *rate {
             DataRate::R250Kbps => (true, false),
             DataRate::R1Mbps => (false, false),
             DataRate::R2Mbps => (false, true),
@@ -101,17 +127,12 @@ where D: Device {
         Ok(())
     }
 
+    /// Set CRC mode
     fn set_crc(
         &mut self,
-        mode: Option<CrcMode>,
+        mode: CrcMode,
     ) -> Result<(), D::Error> {
-        self.device().update_config(|config| match mode {
-            None => config.set_en_crc(false),
-            Some(mode) => match mode {
-                CrcMode::OneByte => config.set_crco(false),
-                CrcMode::TwoBytes => config.set_crco(true),
-            },
-        })
+         self.device().update_config(|config| mode.set_config(config))
     }
 
     /// Sets the interrupt mask
@@ -131,6 +152,7 @@ where D: Device {
         })
     }
 
+    /// Configure which RX pipes to enable
     fn set_pipes_rx_enable(
         &mut self,
         bools: &[bool; PIPES_COUNT],
@@ -139,6 +161,7 @@ where D: Device {
         Ok(())
     }
 
+    /// Set address `addr` of pipe number `pipe_no`
     fn set_rx_addr(
         &mut self,
         pipe_no: usize,
@@ -167,6 +190,7 @@ where D: Device {
         Ok(())
     }
 
+    /// Set address of the TX pipe
     fn set_tx_addr(
         &mut self,
         addr: &[u8],
@@ -176,6 +200,9 @@ where D: Device {
         Ok(())
     }
 
+    /// Configure auto-retransmit
+    ///
+    /// To disable, call as `set_auto_retransmit(0, 0)`.
     fn set_auto_retransmit(
         &mut self,
         delay: u8,
@@ -185,6 +212,7 @@ where D: Device {
         Ok(())
     }
 
+    /// Obtain auto-acknowledgment configuration for all pipes
     fn get_auto_ack(
         &mut self,
     ) -> Result<[bool; PIPES_COUNT], D::Error> {
@@ -193,6 +221,9 @@ where D: Device {
         Ok(register.to_bools())
     }
 
+    /// Configure auto-acknowledgment for all RX pipes
+    ///
+    /// TODO: handle switching tx/rx modes when auto-retransmit is enabled
     fn set_auto_ack(
         &mut self,
         bools: &[bool; PIPES_COUNT],
@@ -204,6 +235,7 @@ where D: Device {
         Ok(())
     }
 
+    /// Get address width configuration
     fn get_address_width(
         &mut self,
     ) -> Result<u8, D::Error> {
@@ -211,6 +243,10 @@ where D: Device {
         Ok(2 + register.aw())
     }
 
+    /// Obtain interrupt pending status as `(RX_DR, TX_DR, MAX_RT)`
+    /// where `RX_DR` indicates new data in the RX FIFO, `TX_DR`
+    /// indicates that a packet has been sent, and `MAX_RT` indicates
+    /// maximum retransmissions without auto-ack.
     fn get_interrupts(
         &mut self,
     ) -> Result<(bool, bool, bool), D::Error> {

@@ -4,8 +4,12 @@
 // may not be copied, modified, or distributed except according to
 // those terms.
 
+//! nRF24L01+ driver for use with [embedded-hal](https://crates.io/crates/embedded-hal)
+
+#![warn(missing_docs, unused)]
+
+
 #![no_std]
-extern crate embedded_hal;
 #[macro_use]
 extern crate bitfield;
 
@@ -39,11 +43,22 @@ mod rxtx;
 mod ptx;
 pub use crate::ptx::PtxMode;
 
+/// Number of RX pipes with configurable addresses
 pub const PIPES_COUNT: usize = 6;
+/// Minimum address length
 pub const MIN_ADDR_BYTES: usize = 3;
+/// Maximum address length
 pub const MAX_ADDR_BYTES: usize = 5;
 
 /// Driver for the nRF24L01+
+///
+/// Never deal with this directly. Instead, you store one of the following types:
+///
+/// * [`StandbyMode<D>`](struct.StandbyMode.html)
+/// * [`RxMode<D>`](struct.RxMode.html)
+/// * [`TxMode<D>`](struct.TxMode.html)
+///
+/// where `D: `[`Device`](trait.Device.html)
 pub struct NRF24L01<E: Debug, CE: OutputPin<Error = E>, CSN: OutputPin<Error = E>, SPI: SpiTransfer<u8>> {
     ce: CE,
     csn: CSN,
@@ -69,22 +84,28 @@ impl<E: Debug, CE: OutputPin<Error = E>, CSN: OutputPin<Error = E>, SPI: SpiTran
 
         // Reset value
         let mut config = Config(0b0000_1000);
-        config.set_mask_rx_dr(true);
-        config.set_mask_tx_ds(true);
-        config.set_mask_max_rt(true);
+        config.set_mask_rx_dr(false);
+        config.set_mask_tx_ds(false);
+        config.set_mask_max_rt(false);
         let mut device = NRF24L01 {
             ce,
             csn,
             spi,
             config,
         };
-        assert!(device.is_connected().unwrap());
+
+        match device.is_connected() {
+            Err(e) => return Err(e),
+            Ok(false) => return Err(Error::NotConnected),
+            _ => {}
+        }
 
         // TODO: activate features?
 
         StandbyMode::power_up(device).map_err(|(_, e)| e)
     }
 
+    /// Reads and validates content of the `SETUP_AW` register.
     pub fn is_connected(&mut self) -> Result<bool, Error<SPIE>> {
         let (_, setup_aw) = self.read_register::<SetupAw>()?;
         let valid = setup_aw.aw() >= 3 && setup_aw.aw() <= 5;

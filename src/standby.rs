@@ -34,10 +34,21 @@ impl<D: Device> Configuration<D> for StandbyMode<D> {
 
 
 impl<D: Device> StandbyMode<D> {
+    /// Constructor
+    ///
+    /// Puts the `device` into standy mode
     pub fn power_up(mut device: D) -> Result<Self, (D, D::Error)> {
         match device.update_config(|config| config.set_pwr_up(true)) {
             Ok(()) => Ok(StandbyMode { device }),
             Err(e) => Err((device, e)),
+        }
+    }
+
+    /// Should be a no-op
+    pub fn power_down(mut self) -> Result<D, (Self, D::Error)> {
+        match self.device.update_config(|config| config.set_pwr_up(false)) {
+            Ok(()) => Ok(self.device),
+            Err(e) => Err((self, e)),
         }
     }
 
