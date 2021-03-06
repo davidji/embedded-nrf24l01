@@ -83,6 +83,7 @@ impl<D: Device> StandbyMode<D> {
         }
     }
 
+    /// Enter PTX mode. 
     pub fn ptx(self, delay: u8, retries: u8) -> Result<PtxMode<D>, (D, D::Error)> {
 
         let mut device = self.device;

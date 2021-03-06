@@ -73,6 +73,7 @@ pub struct Interrupts {
 pub trait Configuration<D> : UsingDevice<D> 
 where D: Device {
 
+    /// Flush the RX queue, discarding any unread packets
     fn flush_rx(&mut self) -> Result<(), D::Error> {
         self.device().send_command(&FlushRx)?;
         Ok(())

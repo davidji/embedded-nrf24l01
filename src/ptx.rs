@@ -7,6 +7,8 @@ use crate::rxtx::{ Received, SendReceiveResult };
 use crate::registers::{ FifoStatus, Status };
 use crate::config::Configuration;
 
+/// In PTX mode, the device transmits packets immediately, and receives packets
+/// only as acknowledge payloads. It's the complement to PRX mode
 pub struct PtxMode<D: Device> {
     device: D,
 }
